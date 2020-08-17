@@ -147,9 +147,18 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
   if ($formName === 'CRM_Contribute_Form_Contribution_Main' || $formName === 'CRM_Contribute_Form_Contribution_Confirm') {
     $formId = $form->getVar('id');
     if (in_array($formId, Civi::settings()->get('delayedbilling_active_contributionforms'))) {
-      $form->addElement('advcheckbox', 'partial_payment', E::ts('Do you want to split your payments over the course of the year?'));
-      $form->add('select2', 'partial_payment_frequency', E::ts('How would you like to portion your payments?'), [2 => E::ts('In half'), 4 => E::ts('In Quarters')], FALSE, ['placeholder' => E::ts('- select -'), 'class' => 'big crm-select2']),
-      $form->setDefaults(['partial_payment' => 0]);
+      $partialPaymentElement = $form->addElement('advcheckbox', 'partial_payment', E::ts('Do you want to split your payments over the course of the year?'));
+      $frequency = $form->add('select2', 'partial_payment_frequency', E::ts('How would you like to portion your payments?'), [2 => E::ts('In half'), 4 => E::ts('In Quarters')], FALSE, ['placeholder' => E::ts('- select -'), 'class' => 'big crm-select2']);
+      if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
+        $form->setDefaults(['partial_payment' => 0]);
+      }
+      else {
+        $partialPaymentElement->freeze();
+        $frequency->freeze();
+      }
+      $form->assign('delayedFields', ['partial_payment', 'partial_payment_frequency']);
+      $templatePath = realpath(dirname(__FILE__)."/templates");
+      CRM_Core_Region::instance('form-body')->add(['template' => "{$templatePath}/CRM/Contribute/Form/Contribution/DelayedFields.tpl"]);
     }
   }
 }
@@ -162,7 +171,17 @@ function delayedbilling_civicrm_validateForm($formName, &$fields, &$files, &$for
 
 function delayedbilling_civicrm_postProcess($formName, $form) {
   if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
-    \Civi::log()->debug('Form Params', ['params' => $form->_params]);
+    if (!empty($form->_params['partial_payment'])) {
+      $frequency = $form->_params['partial_payment_frequency'];
+      $lineItems = $form->get('lineItem');
+      foreach ($lineItems as $priceSetId => $priceFieldValues) {
+        foreach ($priceFieldValues as $priceFieldValueId => $values) {
+          $lineItems[$priceSetId][$priceFieldValueId]['qty'] = $values['qty'] / $frequency;
+          $lineItems[$priceSetId][$priceFieldValueId]['line_total'] = $values['unit_price'] * $lineItems[$priceSetId][$priceFieldValueId]['qty'];
+        }
+      }
+    }
+    $form->set('lineItem', $lineItems);
   }
 }
 
