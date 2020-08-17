@@ -1,10 +1,6 @@
 # biz.jmaconsulting.delayedbilling
 
-![Screenshot](/images/screenshot.png)
-
-(*FIXME: In one or two paragraphs, describe what the extension does and why one would download it. *)
-
-The extension is licensed under [AGPL-3.0](LICENSE.txt).
+Delayed Billing allows users to set up installment payments on the front end for memberships, etc.
 
 ## Requirements
 
@@ -42,3 +38,7 @@ cv en delayedbilling
 ## Known Issues
 
 (* FIXME *)
+
+## License
+
+The extension is licensed under [AGPL-3.0](LICENSE.txt).
