@@ -144,21 +144,32 @@ function delayedbilling_civicrm_themes(&$themes) {
 }
 
 function delayedbilling_civicrm_buildForm($formName, &$form) {
+  if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount') {
+    $form->addYesNo('is_delayed', ts('Delayed Billing Active?'), TRUE);
+    CRM_Core_Region::instance('page-body')->add(array(
+      'template' => 'CRM/DelayedBillingSetting.tpl',
+    ));
+  }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main' || $formName === 'CRM_Contribute_Form_Contribution_Confirm') {
-    $formId = $form->getVar('id');
-    if (in_array($formId, Civi::settings()->get('delayedbilling_active_contributionforms'))) {
+    $formId = $form->getVar('_id');
+    $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
+    if (!empty($formId) && array_key_exists($formId, $contribForms) && !empty($contribForms[$formId])) {
       $partialPaymentElement = $form->addElement('advcheckbox', 'partial_payment', E::ts('Do you want to split your payments over the course of the year?'));
-      $frequency = $form->add('select2', 'partial_payment_frequency', E::ts('How would you like to portion your payments?'), [2 => E::ts('In half'), 4 => E::ts('In Quarters')], FALSE, ['placeholder' => E::ts('- select -'), 'class' => 'big crm-select2']);
+      $frequency = $form->add('select', 'partial_payment_frequency', E::ts('How would you like to portion your payments?'), [2 => E::ts('In half'), 4 => E::ts('In Quarters')], FALSE, ['placeholder' => E::ts('- select -'), 'class' => 'crm-select2 big']);
       if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
         $form->setDefaults(['partial_payment' => 0]);
       }
       else {
+        $form->setDefaults([
+          'partial_payment' => $form->_params['partial_payment'],
+          'partial_payment_frequency' => $form->_params['partial_payment_frequency'],
+        ]);
         $partialPaymentElement->freeze();
         $frequency->freeze();
       }
       $form->assign('delayedFields', ['partial_payment', 'partial_payment_frequency']);
       $templatePath = realpath(dirname(__FILE__)."/templates");
-      CRM_Core_Region::instance('form-body')->add(['template' => "{$templatePath}/CRM/Contribute/Form/Contribution/DelayedFields.tpl"]);
+      CRM_Core_Region::instance('form-body')->add(['template' => "{$templatePath}/CRM/Contribute/Form/DelayedFields.tpl"]);
     }
   }
 }
@@ -169,8 +180,38 @@ function delayedbilling_civicrm_validateForm($formName, &$fields, &$files, &$for
   }
 }
 
+function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
+  if ($objectName == 'Contribution' && $op == 'create') {
+    // We need the recurring contribution created now since Moneris fetches the recurID for the contribution.
+    if (!empty($_POST['partial_payment'])) {
+      $frequency = $_POST['partial_payment_frequency'];
+      $nextDate = date('YmdHis', strtotime ("+$frequency month", time()));
+      $recur = civicrm_api3('ContributionRecur', 'create', [
+        'contact_id' => $objectRef->contact_id,
+        'amount' => $objectRef->total_amount,
+        'frequency_interval' => $frequency,
+        'frequency_unit' => "month",
+        'next_sched_contribution_date' => $nextDate,
+        'contribution_status_id' => "Pending",
+      ]);
+      if (!empty($recur['id'])) {
+        civicrm_api3('Contribution', 'create', [
+          'id' => $objectId,
+          'contribution_recur_id' => $recur['id'],
+        ]);
+      }
+    }
+  }
+}
+
 function delayedbilling_civicrm_postProcess($formName, $form) {
+  if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount' && !empty($form->_submitValues['is_delayed'])) {
+    $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
+    $contribForms[$form->getVar('_id')] = 1;
+    Civi::settings()->set('delayedbilling_active_contributionforms', $contribForms);
+  }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
+    // I'm not so sure about this, looks like the line items are the only thing that is being modified, but the total amount the not affected.
     if (!empty($form->_params['partial_payment'])) {
       $frequency = $form->_params['partial_payment_frequency'];
       $lineItems = $form->get('lineItem');
@@ -181,14 +222,16 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
         }
       }
     }
-    $form->set('lineItem', $lineItems);
   }
 }
 
-function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj,&$rawParams, &$cookedParams) {
+function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawParams, &$cookedParams) {
   if ($paymentObj instanceOf CRM_Core_Payment_Moneris && !empty($rawParams['partial_payment'])) {
     // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
     $rawParams['is_recur'] = 1;
+    $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
+    $rawParams['frequency_unit'] = 'month';
+    $rawParams['amount'] = $rawParams['amount'] / $rawParams['partial_payment_frequency'];
   }
 }
 
