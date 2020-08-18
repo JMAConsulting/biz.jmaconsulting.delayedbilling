@@ -244,7 +244,7 @@ function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
     $failedStatus = CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'contribution_status_id', 'Failed');
     if ($objectRef->contribution_status_id == $failedStatus) {
       // Check if this was a delayed payment.
-      if (_checkDelayedPayment($objectRef->contribution_page_id)) {
+      if (_checkDelayedPayment($objectRef->contribution_page_id) && !empty($objectRef->contribution_recur_id)) {
         // Send an email for failure of payment.
         try {
           civicrm_api3('Email', 'send', [
