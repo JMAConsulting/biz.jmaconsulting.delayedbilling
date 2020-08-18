@@ -12,7 +12,7 @@ use CRM_Delayedbilling_ExtensionUtil as E;
  *
  * @see https://docs.civicrm.org/dev/en/latest/framework/api-architecture/
  */
-function _civicrm_api3_job_SendNotification_spec(&$spec) {
+function _civicrm_api3_job_Sendnotification_spec(&$spec) {
   $spec['days']['api.required'] = 1;
 }
 
@@ -28,7 +28,7 @@ function _civicrm_api3_job_SendNotification_spec(&$spec) {
  *
  * @throws API_Exception
  */
-function civicrm_api3_job_SendNotification($params) {
+function civicrm_api3_job_Sendnotification($params) {
   $days = CRM_Utils_Array::value('days', $params, 1);
   // Get a list of contribution pages that have delayed billing active.
   $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');

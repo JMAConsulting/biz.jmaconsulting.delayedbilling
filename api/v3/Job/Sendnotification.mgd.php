@@ -5,15 +5,15 @@
 // https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_managed
 return [
   [
-    'name' => 'Cron:Job.SendNotification',
+    'name' => 'Cron:Job.Sendnotification',
     'entity' => 'Job',
     'params' => [
       'version' => 3,
-      'name' => 'Call Job.SendNotification API',
-      'description' => 'Call Job.SendNotification API',
+      'name' => 'Call Job.Sendnotification API',
+      'description' => 'Call Job.Sendnotification API',
       'run_frequency' => 'Daily',
       'api_entity' => 'Job',
-      'api_action' => 'SendNotification',
+      'api_action' => 'Sendnotification',
       'parameters' => 'days=1',
     ],
   ],
