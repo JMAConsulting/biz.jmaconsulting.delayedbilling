@@ -1,5 +1,7 @@
 <?php
 
+define('FAILED_NOTIFICATION', 77);
+
 require_once 'delayedbilling.civix.php';
 // phpcs:disable
 use CRM_Delayedbilling_ExtensionUtil as E;
@@ -144,6 +146,22 @@ function delayedbilling_civicrm_themes(&$themes) {
 }
 
 /**
+ * Function to check if the contribution page allows delayed payments.
+ *
+ * @param $id
+ * Contribution Page ID
+ *
+ * @return bool TRUE|FALSE
+ */
+function _checkDelayedPayment($id) {
+  $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
+  if (!empty($id) && array_key_exists($id, $contribForms) && !empty($contribForms[$id])) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
  * Implements hook_civicrm_buildForm().
  */
 function delayedbilling_civicrm_buildForm($formName, &$form) {
@@ -155,8 +173,7 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
   }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main' || $formName === 'CRM_Contribute_Form_Contribution_Confirm') {
     $formId = $form->getVar('_id');
-    $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
-    if (!empty($formId) && array_key_exists($formId, $contribForms) && !empty($contribForms[$formId])) {
+    if (_checkDelayedPayment($formId)) {
       $partialPaymentElement = $form->addElement('advcheckbox', 'partial_payment', E::ts('Do you want to split your payments over the course of the year?'));
       $frequency = $form->add('select', 'partial_payment_frequency', E::ts('How would you like to portion your payments?'), [6 => E::ts('In half'), 3 => E::ts('In Quarters')], FALSE, ['placeholder' => E::ts('- select -'), 'class' => 'crm-select2 big']);
       if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
@@ -213,6 +230,32 @@ function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
           'id' => $objectId,
           'contribution_recur_id' => $recur['id'],
         ]);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_civicrm_post().
+ */
+function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
+  if ($objectName == 'Contribution' && $op == 'edit') {
+    // Check to see if status == Failed.
+    $failedStatus = CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'contribution_status_id', 'Failed');
+    if ($objectRef->contribution_status_id == $failedStatus) {
+      // Check if this was a delayed payment.
+      if (_checkDelayedPayment($objectRef->contribution_page_id)) {
+        // Send an email for failure of payment.
+        try {
+          civicrm_api3('Email', 'send', [
+            'contact_id' => $objectRef->contact_id,
+            'template_id' => FAILED_NOTIFICATION,
+          ]);
+        }
+        catch (CiviCRM_API3_Exception $e) {
+          // Log error message.
+          CRM_Core_Error::debug_var('Error sending email for failed payment:', $e->getMessage());
+        }
       }
     }
   }

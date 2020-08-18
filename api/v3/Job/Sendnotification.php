@@ -30,8 +30,6 @@ function _civicrm_api3_job_Sendnotification_spec(&$spec) {
  */
 function civicrm_api3_job_Sendnotification($params) {
   $days = CRM_Utils_Array::value('days', $params, 1);
-  // Get a list of contribution pages that have delayed billing active.
-  $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
 
   // Get all payments which will be processed tomorrow.
   $sql = "SELECT cr.contact_id, c.contribution_page_id 
@@ -44,9 +42,7 @@ function civicrm_api3_job_Sendnotification($params) {
   $dao = CRM_Core_DAO::executeQuery($sql)->fetchAll();
   $cids = $errors = [];
   foreach ($dao as $result) {
-    if (!empty($result['contribution_page_id'])
-      && array_key_exists($result['contribution_page_id'], $contribForms)
-      && !empty($contribForms[$result['contribution_page_id']])) {
+    if (_checkDelayedPayment($result['contribution_page_id'])) {
       // This contribution is part of a delayed billing series. Send a notification that payment is due tomorrow.
       try {
         civicrm_api3('Email', 'send', [
