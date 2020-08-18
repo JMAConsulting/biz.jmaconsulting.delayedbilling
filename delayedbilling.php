@@ -198,8 +198,13 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
  * Implements hook_civicrm_validateForm().
  */
 function delayedbilling_civicrm_validateForm($formName, &$fields, &$files, &$form, &$errors) {
-  if ($formName === 'CRM_Contribute_Form_Contribution_Main' && !empty($fields['partial_payment']) && empty($fields['partial_payment_frequency'])) {
-    $errors['partial_payment_frequency'] = E::ts('You must specify a split for your payments');
+  if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
+    if (!empty($fields['partial_payment']) && empty($fields['partial_payment_frequency'])) {
+      $errors['partial_payment_frequency'] = E::ts('You must specify a split for your payments');
+    }
+    if (empty($fields['partial_payment']) && !empty($fields['partial_payment_frequency'])) {
+      $errors['partial_payment'] = E::ts('Please select this option if you intend to split payments');
+    }
   }
 }
 
