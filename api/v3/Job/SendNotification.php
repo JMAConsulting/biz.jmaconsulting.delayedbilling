@@ -42,22 +42,40 @@ function civicrm_api3_job_SendNotification($params) {
     AND pp.class_name = 'Payment_Moneris'
     AND DATE(cr.next_sched_contribution_date) = DATE(DATE_ADD(NOW(), INTERVAL $days DAY))";
   $dao = CRM_Core_DAO::executeQuery($sql)->fetchAll();
-  $cids = [];
+  $cids = $errors = [];
   foreach ($dao as $result) {
     if (!empty($result['contribution_page_id'])
       && array_key_exists($result['contribution_page_id'], $contribForms)
       && !empty($contribForms[$result['contribution_page_id']])) {
       // This contribution is part of a delayed billing series. Send a notification that payment is due tomorrow.
-      civicrm_api3('Email', 'send', [
-        'contact_id' => $result['contact_id'],
-        'template_id' =>  PAYMENT_NOTIFICATION,
-      ]);
-      if (!$email['is_error']) {
-        $cids[] = $result['contact_id'];
+      try {
+        civicrm_api3('Email', 'send', [
+          'contact_id' => $result['contact_id'],
+          'template_id' => PAYMENT_NOTIFICATION,
+        ]);
       }
+      catch (CiviCRM_API3_Exception $e) {
+        $errors[] = $e->getMessage();
+      }
+      $cids[] = $result['contact_id'];
     }
   }
 
-  return civicrm_api3_create_success($cids, $params, 'Job', 'SendNotification');
-
+  if (count($errors) > 0) {
+    return civicrm_api3_create_error(
+      ts("Completed, but with %1 errors. %2 records processed.",
+        array(
+          1 => count($errors),
+          2 => count($cids),
+        )
+      ) . "<br />" . implode("<br />", $errors)
+    );
+  }
+  else {
+    return civicrm_api3_create_success(ts("Completed, %1 records processed.",
+        array(
+          1 => count($cids),
+        )
+      ) . "<br />" . implode("<br />", $cids), $params, 'Job', 'SendNotification');
+  }
 }
