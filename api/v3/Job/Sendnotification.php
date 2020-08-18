@@ -37,7 +37,7 @@ function civicrm_api3_job_Sendnotification($params) {
     INNER JOIN civicrm_payment_processor pp ON cr.payment_processor_id = pp.id
     INNER JOIN civicrm_contribution c ON c.contribution_recur_id = cr.id
     WHERE cr.contribution_status_id = 5
-    AND pp.class_name = 'Payment_Moneris'
+    AND pp.name = 'Moneris'
     AND DATE(cr.next_sched_contribution_date) = DATE(DATE_ADD(NOW(), INTERVAL $days DAY))";
   $dao = CRM_Core_DAO::executeQuery($sql)->fetchAll();
   $cids = $errors = [];
