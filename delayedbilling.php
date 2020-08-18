@@ -209,16 +209,16 @@ function delayedbilling_civicrm_validateForm($formName, &$fields, &$files, &$for
 function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
   if ($objectName == 'Contribution' && $op == 'create') {
     // We need the recurring contribution created now since Moneris fetches the recurID for the contribution.
-    if (!empty($params['partial_payment'])) {
-      $frequency = $params['partial_payment_frequency'];
+    if (!empty($_POST['partial_payment'])) {
+      $frequency = $_POST['partial_payment_frequency'];
       $installments = 1;
       if ($frequency == 3) {
         $installments = 3;
       }
       $nextDate = date('YmdHis', strtotime ("+$frequency month", time()));
       $recur = civicrm_api3('ContributionRecur', 'create', [
-        'contact_id' => $objectRef->contact_id,
-        'amount' => $objectRef->total_amount,
+        'contact_id' => $params['contact_id'],
+        'amount' => $params['total_amount'],
         'frequency_interval' => $frequency,
         'frequency_unit' => "month",
         'installments' => $installments,
@@ -226,10 +226,7 @@ function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
         'contribution_status_id' => "Pending",
       ]);
       if (!empty($recur['id'])) {
-        civicrm_api3('Contribution', 'create', [
-          'id' => $objectId,
-          'contribution_recur_id' => $recur['id'],
-        ]);
+        $params['contribution_recur_id'] = $recur['id'];
       }
     }
   }
@@ -277,7 +274,7 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
       $lineItems = $form->get('lineItem');
       $totalAmount = 0;
       $split = 2;
-      if ($frequency === 3) {
+      if ($frequency == 3) {
         $split = 4;
       }
       foreach ($lineItems as $priceSetId => $priceFieldValues) {
