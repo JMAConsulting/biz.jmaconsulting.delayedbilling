@@ -216,16 +216,24 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
     Civi::settings()->set('delayedbilling_active_contributionforms', $contribForms);
   }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
-    // I'm not so sure about this, looks like the line items are the only thing that is being modified, but the total amount the not affected.
     if (!empty($form->_params['partial_payment'])) {
       $frequency = $form->_params['partial_payment_frequency'];
       $lineItems = $form->get('lineItem');
+      $totalAmount = 0;
+      $split = 2;
+      if ($frequency === 3) {
+        $split = 4;
+      }
       foreach ($lineItems as $priceSetId => $priceFieldValues) {
         foreach ($priceFieldValues as $priceFieldValueId => $values) {
-          $lineItems[$priceSetId][$priceFieldValueId]['qty'] = $values['qty'] / $frequency;
+          $lineItems[$priceSetId][$priceFieldValueId]['qty'] = $values['qty'] / $split;
           $lineItems[$priceSetId][$priceFieldValueId]['line_total'] = $values['unit_price'] * $lineItems[$priceSetId][$priceFieldValueId]['qty'];
+          $totalAmount = $totalAmount + $lineItems[$priceSetId][$priceFieldValueId]['line_total'];
         }
       }
+      $form->set('lineItem', $lineItems);
+      $form->_params['amount'] = $form->_params['separate_amount'] = $totalAmount;
+      $form->set('amount', $totalAmount);
     }
   }
 }
@@ -240,7 +248,6 @@ function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawPa
     $rawParams['is_recur'] = 1;
     $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
     $rawParams['frequency_unit'] = 'month';
-    $rawParams['amount'] = $rawParams['amount'] / $rawParams['partial_payment_frequency'];
     $rawParams['installments'] = $installments;
   }
 }
