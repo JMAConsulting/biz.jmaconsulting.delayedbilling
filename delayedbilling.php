@@ -216,9 +216,9 @@ function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
     // We need the recurring contribution created now since Moneris fetches the recurID for the contribution.
     if (!empty($_POST['partial_payment'])) {
       $frequency = $_POST['partial_payment_frequency'];
-      $installments = 1;
+      $installments = 2;
       if ($frequency == 3) {
-        $installments = 3;
+        $installments = 4;
       }
       $nextDate = date('YmdHis', strtotime ("+$frequency month", time()));
       $recur = civicrm_api3('ContributionRecur', 'create', [
@@ -302,9 +302,9 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
 function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawParams, &$cookedParams) {
   if ($paymentObj instanceOf CRM_Core_Payment_Moneris && !empty($rawParams['partial_payment'])) {
     // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
-    $installments = 1;
+    $installments = 2;
     if ($rawParams['partial_payment_frequency'] == 3) {
-      $installments = 3;
+      $installments = 4;
     }
     $rawParams['is_recur'] = 1;
     $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
