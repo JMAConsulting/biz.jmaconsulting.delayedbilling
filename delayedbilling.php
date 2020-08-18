@@ -137,12 +137,15 @@ function delayedbilling_civicrm_entityTypes(&$entityTypes) {
 }
 
 /**
- * Implements hook_civicrm_thems().
+ * Implements hook_civicrm_themes().
  */
 function delayedbilling_civicrm_themes(&$themes) {
   _delayedbilling_civix_civicrm_themes($themes);
 }
 
+/**
+ * Implements hook_civicrm_buildForm().
+ */
 function delayedbilling_civicrm_buildForm($formName, &$form) {
   if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount') {
     $form->addYesNo('is_delayed', ts('Delayed Billing Active?'), TRUE);
@@ -174,17 +177,23 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
   }
 }
 
+/**
+ * Implements hook_civicrm_validateForm().
+ */
 function delayedbilling_civicrm_validateForm($formName, &$fields, &$files, &$form, &$errors) {
   if ($formName === 'CRM_Contribute_Form_Contribution_Main' && !empty($fields['partial_payment']) && empty($fields['partial_payment_frequency'])) {
     $errors['partial_payment_frequency'] = E::ts('You must specify a split for your payments');
   }
 }
 
-function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
+/**
+ * Implements hook_civicrm_pre().
+ */
+function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
   if ($objectName == 'Contribution' && $op == 'create') {
     // We need the recurring contribution created now since Moneris fetches the recurID for the contribution.
-    if (!empty($_POST['partial_payment'])) {
-      $frequency = $_POST['partial_payment_frequency'];
+    if (!empty($params['partial_payment'])) {
+      $frequency = $params['partial_payment_frequency'];
       $installments = 1;
       if ($frequency == 3) {
         $installments = 3;
@@ -209,6 +218,9 @@ function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
   }
 }
 
+/**
+ * Implements hook_civicrm_postProcess().
+ */
 function delayedbilling_civicrm_postProcess($formName, $form) {
   if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount' && !empty($form->_submitValues['is_delayed'])) {
     $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
@@ -238,6 +250,9 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
   }
 }
 
+/**
+ * Implements hook_civicrm_alterPaymentProcessorParams().
+ */
 function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawParams, &$cookedParams) {
   if ($paymentObj instanceOf CRM_Core_Payment_Moneris && !empty($rawParams['partial_payment'])) {
     // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
