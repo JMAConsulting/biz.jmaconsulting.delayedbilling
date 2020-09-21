@@ -155,6 +155,7 @@ function delayedbilling_civicrm_themes(&$themes) {
  */
 function _checkDelayedPayment($id) {
   $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
+  $contribForms = CRM_Core_DAO::unSerializeField($contribForms, CRM_Core_DAO::SERIALIZE_SEPARATOR_BOOKEND);
   if (!empty($id) && array_key_exists($id, $contribForms) && !empty($contribForms[$id])) {
     return TRUE;
   }
@@ -170,16 +171,33 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
     CRM_Core_Region::instance('page-body')->add(array(
       'template' => 'CRM/DelayedBillingSetting.tpl',
     ));
+    drupal_set_message(Civi::settings()->get('delayedbilling_active_contributionforms'));
   }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main' || $formName === 'CRM_Contribute_Form_Contribution_Confirm') {
     $formId = $form->getVar('_id');
     if (_checkDelayedPayment($formId)) {
-      $partialPaymentElement = $form->addElement('advcheckbox', 'partial_payment', E::ts('Do you want to split your payments over the course of the year?'));
-      $frequency = $form->add('select', 'partial_payment_frequency', E::ts('How would you like to portion your payments?'), [6 => E::ts('In half'), 3 => E::ts('In Quarters')], FALSE, ['placeholder' => E::ts('- select -'), 'class' => 'crm-select2 big']);
-      if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
+      $frequencyOptions = Civi::settings()->get('delayedbilling_frequencies');
+      $frequencyOptions = CRM_Core_DAO::unSerializeField($frequencyOptions, CRM_Core_DAO::SERIALIZE_SEPARATOR_BOOKEND);
+      if (count($frequencyOptions) === 1) {
+        $partialPaymentElement = $form->addElement('advcheckbox', 'partial_payment', E::ts('Would you like to pay %1', ['%1' => _getFrequencyLabel($frequencyOptions[0])]));
+        $frequency = $form->addElement('hidden', 'partial_payment_frequency', $frequencyOptions[0]);
+        $form->assign('delayedFields', ['partial_payment']);
+      }
+      elseif (count($frequencyOptions)) {
+        $partialPaymentElement = $form->addElement('advcheckbox', 'partial_payment', E::ts('Do you want to split your payments over the course of the year?'));
+        $frequencyQFOptions = frequencyOptions();
+        foreach ($frequencyOptions as $key => $value) {
+          if (!in_array($key, $frequencyOptions)) {
+            unset($frequencyQFOptions[$key]);
+          }
+        }
+        $frequency = $form->add('select', 'partial_payment_frequency', E::ts('How would you like to portion your payments?'), $frequencyQFOptions, FALSE, ['placeholder' => E::ts('- select -'), 'class' => 'crm-select2 big']);
+        $form->assign('delayedFields', ['partial_payment', 'partial_payment_frequency']);
+      }
+      if ($formName === 'CRM_Contribute_Form_Contribution_Main' && count($frequencyOptions)) {
         $form->setDefaults(['partial_payment' => 0]);
       }
-      else {
+      elseif (count($frequencyOptions)) {
         $form->setDefaults([
           'partial_payment' => $form->_params['partial_payment'],
           'partial_payment_frequency' => $form->_params['partial_payment_frequency'],
@@ -187,7 +205,7 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
         $partialPaymentElement->freeze();
         $frequency->freeze();
       }
-      $form->assign('delayedFields', ['partial_payment', 'partial_payment_frequency']);
+      
       $templatePath = realpath(dirname(__FILE__)."/templates");
       CRM_Core_Region::instance('form-body')->add(['template' => "{$templatePath}/CRM/Contribute/Form/DelayedFields.tpl"]);
     }
@@ -198,7 +216,9 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
  * Implements hook_civicrm_validateForm().
  */
 function delayedbilling_civicrm_validateForm($formName, &$fields, &$files, &$form, &$errors) {
-  if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
+  $frequencyOptions = Civi::settings()->get('delayedbilling_frequencies');
+  $frequencyOptions = CRM_Core_DAO::unSerializeField($frequencyOptions, CRM_Core_DAO::SERIALIZE_SEPARATOR_BOOKEND);
+  if ($formName === 'CRM_Contribute_Form_Contribution_Main' && count($frequencyOptions) > 1) {
     if (!empty($fields['partial_payment']) && empty($fields['partial_payment_frequency'])) {
       $errors['partial_payment_frequency'] = E::ts('You must specify a split for your payments');
     }
@@ -219,6 +239,9 @@ function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
       $installments = 2;
       if ($frequency == 3) {
         $installments = 4;
+      }
+      elseif ($frequency == 1) {
+        $installments = 12;
       }
       $nextDate = date('YmdHis', strtotime ("+$frequency month", time()));
       $recur = civicrm_api3('ContributionRecur', 'create', [
@@ -241,12 +264,13 @@ function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
  * Implements hook_civicrm_post().
  */
 function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
+  $failureNotification = Civi::settings()->get('delayedbilling_send_failure_noticiation');
   if ($objectName == 'Contribution' && $op == 'edit') {
     // Check to see if status == Failed.
     $failedStatus = CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'contribution_status_id', 'Failed');
     if ($objectRef->contribution_status_id == $failedStatus) {
       // Check if this was a delayed payment.
-      if (_checkDelayedPayment($objectRef->contribution_page_id) && !empty($objectRef->contribution_recur_id)) {
+      if (_checkDelayedPayment($objectRef->contribution_page_id) && !empty($objectRef->contribution_recur_id) && $failureNotification) {
         // Send an email for failure of payment.
         try {
           civicrm_api3('Email', 'send', [
@@ -282,6 +306,9 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
       if ($frequency == 3) {
         $split = 4;
       }
+      elseif ($frequency == 1) {
+        $split = 12;
+      }
       foreach ($lineItems as $priceSetId => $priceFieldValues) {
         foreach ($priceFieldValues as $priceFieldValueId => $values) {
           $lineItems[$priceSetId][$priceFieldValueId]['qty'] = $values['qty'] / $split;
@@ -300,16 +327,42 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
  * Implements hook_civicrm_alterPaymentProcessorParams().
  */
 function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawParams, &$cookedParams) {
+  drupal_set_message(json_encode($rawParams));
   if ($paymentObj instanceOf CRM_Core_Payment_Moneris && !empty($rawParams['partial_payment'])) {
     // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
     $installments = 2;
     if ($rawParams['partial_payment_frequency'] == 3) {
       $installments = 4;
     }
+    elseif ($rawParmas['partial_payment_frequency'] == 1) {
+      $installements = 12;
+    }
     $rawParams['is_recur'] = 1;
     $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
     $rawParams['frequency_unit'] = 'month';
     $rawParams['installments'] = $installments;
+  }
+}
+
+function frequencyOptions() {
+  return [
+    6 => E::ts('In Half'),
+    3 => E::ts('In Quarters'),
+    1 => E::ts('Monthly'),
+  ];
+}
+
+function _getFrequencyLabel($frequency) {
+  switch ($frequency) {
+    case 6:
+      return 'Half Yearly';
+
+    case 3:
+      return 'Quarterly';
+
+    case 1:
+      return 'Monthly';
+
   }
 }
 
@@ -329,14 +382,14 @@ function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawPa
  *
  * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_navigationMenu
  */
-//function delayedbilling_civicrm_navigationMenu(&$menu) {
-//  _delayedbilling_civix_insert_navigation_menu($menu, 'Mailings', array(
-//    'label' => E::ts('New subliminal message'),
-//    'name' => 'mailing_subliminal_message',
-//    'url' => 'civicrm/mailing/subliminal',
-//    'permission' => 'access CiviMail',
-//    'operator' => 'OR',
-//    'separator' => 0,
-//  ));
-//  _delayedbilling_civix_navigationMenu($menu);
-//}
+function delayedbilling_civicrm_navigationMenu(&$menu) {
+  _delayedbilling_civix_insert_navigation_menu($menu, 'Administer/CiviContribute', array(
+    'label' => E::ts('Delayed Billing Settings'),
+    'name' => 'delayed_billing_settings',
+    'url' => 'civicrm/admin/setting/delayedbilling',
+    'permission' => 'Administer CiviContribute',
+    'operator' => 'OR',
+    'separator' => 0,
+  ));
+  _delayedbilling_civix_navigationMenu($menu);
+}
