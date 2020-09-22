@@ -255,6 +255,7 @@ function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
       ]);
       if (!empty($recur['id'])) {
         $params['contribution_recur_id'] = $recur['id'];
+        $params['contributionRecurID'] = $recur['id'];
       }
     }
   }
@@ -327,20 +328,21 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
  * Implements hook_civicrm_alterPaymentProcessorParams().
  */
 function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawParams, &$cookedParams) {
-  drupal_set_message(json_encode($rawParams));
-  if ($paymentObj instanceOf CRM_Core_Payment_Moneris && !empty($rawParams['partial_payment'])) {
-    // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
-    $installments = 2;
-    if ($rawParams['partial_payment_frequency'] == 3) {
-      $installments = 4;
+  if (!empty($rawParams['partial_payment'])) {
+    if ($paymentObj instanceOf CRM_Core_Payment_Moneris || $paymentObj instanceOf CRM_Core_Payment_iATSService || $paymentObj instanceof CRM_Core_Payment_iATSServiceACHEFT) {
+      // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
+      $installments = 2;
+      if ($rawParams['partial_payment_frequency'] == 3) {
+        $installments = 4;
+      }
+      elseif ($rawParmas['partial_payment_frequency'] == 1) {
+        $installements = 12;
+      }
+      $rawParams['is_recur'] = 1;
+      $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
+      $rawParams['frequency_unit'] = 'month';
+      $rawParams['installments'] = $installments;
     }
-    elseif ($rawParmas['partial_payment_frequency'] == 1) {
-      $installements = 12;
-    }
-    $rawParams['is_recur'] = 1;
-    $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
-    $rawParams['frequency_unit'] = 'month';
-    $rawParams['installments'] = $installments;
   }
 }
 
