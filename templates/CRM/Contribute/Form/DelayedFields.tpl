@@ -18,8 +18,9 @@
 {literal}
   <script type="text/javascript">
     CRM.$(function($) {
-      $('.delayedFields-section').insertAfter($('#membership').parent());
-      $('.delayedFields-section').appendTo($('.amount_display-group'));
+      $(document).ready(function() {
+        $('.delayedFields-section').appendTo($('#membership'));
+      });
     });
   </script>
 {/literal}
