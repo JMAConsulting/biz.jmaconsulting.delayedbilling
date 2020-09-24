@@ -166,8 +166,11 @@ function _checkDelayedPayment($id) {
  * Implements hook_civicrm_buildForm().
  */
 function delayedbilling_civicrm_buildForm($formName, &$form) {
-  if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount') {
+  if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount' && !empty($_GET['snippet'])) {
     $form->addYesNo('is_delayed', ts('Delayed Billing Active?'), TRUE);
+    if (_checkDelayedPayment($form->getVar('_id'))) {
+      $form->setDefaults(['is_delayed' => 1]);
+    }
     CRM_Core_Region::instance('page-body')->add(array(
       'template' => 'CRM/DelayedBillingSetting.tpl',
     ));
@@ -293,7 +296,10 @@ function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
 function delayedbilling_civicrm_postProcess($formName, $form) {
   if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount' && !empty($form->_submitValues['is_delayed'])) {
     $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
-    $contribForms[$form->getVar('_id')] = 1;
+    $contribForms = CRM_Core_DAO::unSerializeField($contribForms, CRM_Core_DAO::SERIALIZE_SEPARATOR_BOOKEND);
+    if (!in_array($form->getVar('_id'), $contribForms)) {
+      $contribForms[] = $form->getVar('_id');
+    }
     Civi::settings()->set('delayedbilling_active_contributionforms', $contribForms);
   }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
