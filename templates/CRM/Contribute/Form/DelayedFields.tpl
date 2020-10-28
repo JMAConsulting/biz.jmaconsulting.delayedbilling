@@ -18,8 +18,30 @@
 {literal}
   <script type="text/javascript">
     CRM.$(function($) {
-      $('.delayedFields-section').insertAfter($('#membership').parent());
-      $('.delayedFields-section').appendTo($('.amount_display-group'));
+      $(document).ready(function() {
+        var checkPayment = '{/literal}{$checkPayment}{literal}';
+        $('.delayedFields-section').insertAfter($('.payment_options-group'));
+        
+        var initialPayment = $('input[name="payment_processor_id"]:checked').val();
+        hideShowSplit(checkPayment, initialPayment);
+
+        $('input[name="payment_processor_id"]').change(function () {
+          hideShowSplit(checkPayment, $(this).val());
+        });
+
+        function hideShowSplit(check, value) {
+          if (check != 'NA') {
+            if (value == check) {
+              $('.delayedFields-section').hide();
+              $('.delayedFields-section').find('input').val('');
+              $('.delayedFields-section').find('input:checkbox').prop('checked', false);
+            }
+            else {
+              $('.delayedFields-section').show();
+            }
+          }  
+        }
+      });
     });
   </script>
 {/literal}

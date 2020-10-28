@@ -207,6 +207,14 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
         $partialPaymentElement->freeze();
         $frequency->freeze();
       }
+      $form->assign('checkPayment', 'NA');
+      if (!empty($form->_paymentProcessors)) {
+	foreach ($form->_paymentProcessors as $id => $processor) {
+          if ($processor['payment_processor_type'] == 'Manual') {
+            $form->assign('checkPayment', $id);
+	  }
+        }
+      }
       
       $templatePath = realpath(dirname(__FILE__)."/templates");
       CRM_Core_Region::instance('form-body')->add(['template' => "{$templatePath}/CRM/Contribute/Form/DelayedFields.tpl"]);
