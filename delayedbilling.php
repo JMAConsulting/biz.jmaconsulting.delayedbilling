@@ -344,8 +344,8 @@ function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawPa
   if (!empty($rawParams['partial_payment'])) {
     if ($paymentObj instanceOf CRM_Core_Payment_Moneris || $paymentObj instanceOf CRM_Core_Payment_iATSService || $paymentObj instanceof CRM_Core_Payment_iATSServiceACHEFT) {
       // If we have made it this far but haven't set the ContributionRecurID value then lets set it here.
-      if (empty($rawParams['ContributionRecurID']) && !empty($rawParams['contributionID'])) {
-        $rawParams['ContributionRecurID'] = CRM_Core_DAO::getFieldValue('CRM_Contribute_DAO_Contribution', $rawParams['contributionID'], 'contribution_recur_id');
+      if (empty($rawParams['contributionRecurID']) && !empty($rawParams['contributionID'])) {
+        $rawParams['contributionRecurID'] = CRM_Core_DAO::getFieldValue('CRM_Contribute_DAO_Contribution', $rawParams['contributionID'], 'contribution_recur_id');
       }
       // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
       $installments = 2;
