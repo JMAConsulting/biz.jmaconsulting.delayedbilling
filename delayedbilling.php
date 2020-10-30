@@ -156,7 +156,7 @@ function delayedbilling_civicrm_themes(&$themes) {
 function _checkDelayedPayment($id) {
   $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
   $contribForms = CRM_Core_DAO::unSerializeField($contribForms, CRM_Core_DAO::SERIALIZE_SEPARATOR_BOOKEND);
-  if (!empty($id) && array_key_exists($id, $contribForms) && !empty($contribForms[$id])) {
+  if (!empty($id) && (array_key_exists($id, $contribForms) && !empty($contribForms[$id])) || array_search($id, $contribForms) !== FALSE) {
     return TRUE;
   }
   return FALSE;
@@ -166,12 +166,14 @@ function _checkDelayedPayment($id) {
  * Implements hook_civicrm_buildForm().
  */
 function delayedbilling_civicrm_buildForm($formName, &$form) {
-  if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount') {
+  if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount' && !empty($_GET['snippet'])) {
     $form->addYesNo('is_delayed', ts('Delayed Billing Active?'), TRUE);
+    if (_checkDelayedPayment($form->getVar('_id'))) {
+      $form->setDefaults(['is_delayed' => 1]);
+    }
     CRM_Core_Region::instance('page-body')->add(array(
       'template' => 'CRM/DelayedBillingSetting.tpl',
     ));
-    drupal_set_message(Civi::settings()->get('delayedbilling_active_contributionforms'));
   }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main' || $formName === 'CRM_Contribute_Form_Contribution_Confirm') {
     $formId = $form->getVar('_id');
@@ -204,6 +206,14 @@ function delayedbilling_civicrm_buildForm($formName, &$form) {
         ]);
         $partialPaymentElement->freeze();
         $frequency->freeze();
+      }
+      $form->assign('checkPayment', 'NA');
+      if (!empty($form->_paymentProcessors)) {
+	foreach ($form->_paymentProcessors as $id => $processor) {
+          if ($processor['payment_processor_type'] == 'Manual') {
+            $form->assign('checkPayment', $id);
+	  }
+        }
       }
       
       $templatePath = realpath(dirname(__FILE__)."/templates");
@@ -255,6 +265,7 @@ function delayedbilling_civicrm_pre($op, $objectName, $id, &$params) {
       ]);
       if (!empty($recur['id'])) {
         $params['contribution_recur_id'] = $recur['id'];
+        $params['contributionRecurID'] = $recur['id'];
       }
     }
   }
@@ -293,7 +304,10 @@ function delayedbilling_civicrm_post($op, $objectName, $objectId, &$objectRef) {
 function delayedbilling_civicrm_postProcess($formName, $form) {
   if ($formName == 'CRM_Contribute_Form_ContributionPage_Amount' && !empty($form->_submitValues['is_delayed'])) {
     $contribForms = Civi::settings()->get('delayedbilling_active_contributionforms');
-    $contribForms[$form->getVar('_id')] = 1;
+    $contribForms = CRM_Core_DAO::unSerializeField($contribForms, CRM_Core_DAO::SERIALIZE_SEPARATOR_BOOKEND);
+    if (!in_array($form->getVar('_id'), $contribForms)) {
+      $contribForms[] = $form->getVar('_id');
+    }
     Civi::settings()->set('delayedbilling_active_contributionforms', $contribForms);
   }
   if ($formName === 'CRM_Contribute_Form_Contribution_Main') {
@@ -327,20 +341,25 @@ function delayedbilling_civicrm_postProcess($formName, $form) {
  * Implements hook_civicrm_alterPaymentProcessorParams().
  */
 function delayedbilling_civicrm_alterPaymentProcessorParams($paymentObj, &$rawParams, &$cookedParams) {
-  drupal_set_message(json_encode($rawParams));
-  if ($paymentObj instanceOf CRM_Core_Payment_Moneris && !empty($rawParams['partial_payment'])) {
-    // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
-    $installments = 2;
-    if ($rawParams['partial_payment_frequency'] == 3) {
-      $installments = 4;
+  if (!empty($rawParams['partial_payment'])) {
+    if ($paymentObj instanceOf CRM_Core_Payment_Moneris || $paymentObj instanceOf CRM_Core_Payment_iATSService || $paymentObj instanceof CRM_Core_Payment_iATSServiceACHEFT) {
+      // If we have made it this far but haven't set the ContributionRecurID value then lets set it here.
+      if (empty($rawParams['contributionRecurID']) && !empty($rawParams['contributionID'])) {
+        $rawParams['contributionRecurID'] = CRM_Core_DAO::getFieldValue('CRM_Contribute_DAO_Contribution', $rawParams['contributionID'], 'contribution_recur_id');
+      }
+      // We set is_recur to be true here so that the token is created in Moneris and in CiviCRM for future payments.
+      $installments = 2;
+      if ($rawParams['partial_payment_frequency'] == 3) {
+        $installments = 4;
+      }
+      elseif ($rawParmas['partial_payment_frequency'] == 1) {
+        $installements = 12;
+      }
+      $rawParams['is_recur'] = 1;
+      $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
+      $rawParams['frequency_unit'] = 'month';
+      $rawParams['installments'] = $installments;
     }
-    elseif ($rawParmas['partial_payment_frequency'] == 1) {
-      $installements = 12;
-    }
-    $rawParams['is_recur'] = 1;
-    $rawParams['frequency_interval'] = $rawParams['partial_payment_frequency'];
-    $rawParams['frequency_unit'] = 'month';
-    $rawParams['installments'] = $installments;
   }
 }
 
